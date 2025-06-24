@@ -61,7 +61,7 @@
           step="0.01"
         />
         <input type="date" id="paymentDate" />
-        <button class="btn" onclick="addStudent()">Add Student</button>
+        <button type="button" class="btn" onclick="addPayment()">Add Payment</button>
       </div>
 
       <table id="invoiceTable">
@@ -71,6 +71,7 @@
             <th>Email</th>
             <th>Course</th>
             <th>Amount Paid (Ksh.)</th>
+            <th>Total Paid (Ksh.)</th>
             <th>Balance Remaining (Ksh.)</th>
             <th>Date</th>
             <th>Action</th>
@@ -79,13 +80,21 @@
         <tbody></tbody>
       </table>
 
-      <button class="btn" onclick="generatePDF()">
-        🖨️ Generate PDF Invoice
+      <button type="button" class="btn" onclick="generatePDF()">
+        🖨️ Generate PDF
       </button>
     </div>
 
     <script>
-      function addStudent() {
+      // Load transactions from localStorage
+      let transactions = JSON.parse(localStorage.getItem('transactions')) || [];
+
+      // Load existing transactions into table on page load
+      window.onload = function() {
+        loadTable();
+      };
+
+      function addPayment() {
         let name = document.getElementById("studentName").value;
         let email = document.getElementById("studentEmail").value;
         let course = document.getElementById("studentCourse").value;
@@ -95,27 +104,31 @@
           parseFloat(document.getElementById("courseFee").value) || 0;
         let date = document.getElementById("paymentDate").value;
 
-        let balanceRemaining = courseFee - amountPaid;
-
         if (!name || !email || !course || !amountPaid || !courseFee || !date) {
           alert("Please fill all fields.");
           return;
         }
 
-        let table = document
-          .getElementById("invoiceTable")
-          .getElementsByTagName("tbody")[0];
-        let newRow = table.insertRow();
-        newRow.innerHTML = `
-            <td>${name}</td>
-            <td>${email}</td>
-            <td>${course}</td>
-            <td>Ksh.${amountPaid.toFixed(2)}</td>
-            <td>Ksh.${balanceRemaining.toFixed(2)}</td>
-            <td>${date}</td>
-            <td><button class="btn" onclick="deleteStudent(this)">❌ Remove</button></td>
-        `;
+        // Create new transaction
+        let transaction = {
+          name: name,
+          email: email,
+          course: course,
+          courseFee: courseFee,
+          amountPaid: amountPaid,
+          date: date,
+        };
 
+        // Add to transactions array
+        transactions.push(transaction);
+
+        // Save to localStorage
+        localStorage.setItem('transactions', JSON.stringify(transactions));
+
+        // Reload table
+        loadTable();
+
+        // Clear form
         document.getElementById("studentName").value = "";
         document.getElementById("studentEmail").value = "";
         document.getElementById("studentCourse").value = "";
@@ -124,57 +137,178 @@
         document.getElementById("paymentDate").value = "";
       }
 
-      function deleteStudent(button) {
-        let row = button.parentElement.parentElement;
-        row.remove();
+      function loadTable() {
+        let table = document
+          .getElementById("invoiceTable")
+          .getElementsByTagName("tbody")[0];
+        table.innerHTML = ""; // Clear existing rows
+
+        transactions.forEach((transaction, index) => {
+          // Calculate total paid for this student (by email) up to this transaction
+          let totalPaid = transactions
+            .filter(t => t.email === transaction.email && transactions.indexOf(t) <= index)
+            .reduce((sum, t) => sum + t.amountPaid, 0);
+          let balanceRemaining = transaction.courseFee - totalPaid;
+
+          let newRow = table.insertRow();
+          newRow.innerHTML = `
+            <td>${transaction.name}</td>
+            <td>${transaction.email}</td>
+            <td>${transaction.course}</td>
+            <td>Ksh.${transaction.amountPaid.toFixed(2)}</td>
+            <td>Ksh.${totalPaid.toFixed(2)}</td>
+            <td>Ksh.${balanceRemaining.toFixed(2)}</td>
+            <td>${transaction.date}</td>
+            <td><button type="button" class="btn" onclick="deleteTransaction(${index})">❌ Remove</button></td>
+          `;
+        });
+      }
+
+      function deleteTransaction(index) {
+        transactions.splice(index, 1);
+        localStorage.setItem('transactions', JSON.stringify(transactions));
+        loadTable();
       }
 
       function generatePDF() {
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF();
 
-        doc.setFontSize(18);
-        doc.setTextColor(255, 128, 0);
+        // Set fonts and colors
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(20);
+        doc.setTextColor(255, 102, 0); // Orange color
 
-        doc.text("Codespace Institute of Development Invoice", 20, 20);
+        // Header
+        doc.text("INVOICE", 20, 20);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(12);
+        doc.setTextColor(0, 0, 0);
+        doc.text("Codespace Institute of Development", 20, 28);
+        doc.text("Nairobi, Kenya", 20, 34);
+        doc.text("Email: info.codespaceinstitute@gmail.com", 20, 40);
+        doc.text("Phone: +254 791 414 970", 20, 46);
 
-        let table = document.getElementById("invoiceTable");
-        let rows = table.getElementsByTagName("tbody")[0].rows;
-        let data = [];
+        // Logo (Text: Codespace)
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(16);
+        doc.setTextColor(255, 102, 0);
+        doc.text("Codespace", 160, 20);
 
-        for (let i = 0; i < rows.length; i++) {
-          let row = rows[i];
-          let rowData = [];
-          for (let j = 0; j < row.cells.length - 1; j++) {
-            rowData.push(row.cells[j].textContent);
-          }
-          data.push(rowData);
-        }
+        // Invoice Details (right-aligned)
+        const invoiceNumber = `INV-${Math.floor(1000 + Math.random() * 9000)}`;
+        const invoiceDate = new Date().toLocaleDateString('en-GB', {
+          day: '2-digit',
+          month: 'long',
+          year: 'numeric'
+        });
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(12);
+        doc.setTextColor(0, 0, 0);
+        doc.text(`Invoice No: ${invoiceNumber}`, 140, 28);
+        doc.text(`Date: ${invoiceDate}`, 140, 34);
 
+        // Horizontal Line
+        doc.setDrawColor(255, 102, 0);
+        doc.line(20, 55, 190, 55);
+
+        // Table Data
+        let data = transactions.map((transaction, index) => {
+          let totalPaid = transactions
+            .filter(t => t.email === transaction.email && transactions.indexOf(t) <= index)
+            .reduce((sum, t) => sum + t.amountPaid, 0);
+          let balanceRemaining = transaction.courseFee - totalPaid;
+          return [
+            transaction.name,
+            transaction.email,
+            transaction.course,
+            `Ksh.${transaction.amountPaid.toFixed(2)}`,
+            `Ksh.${totalPaid.toFixed(2)}`,
+            `Ksh.${balanceRemaining.toFixed(2)}`,
+            transaction.date
+          ];
+        });
+
+        // AutoTable with Adjusted Column Widths
         doc.autoTable({
           head: [
             [
               "Name",
               "Email",
               "Course",
-              "Amount Paid (Ksh.)",
-              "Balance Remaining (Ksh.)",
-              "Date",
-            ],
+              "Amount Paid",
+              "Total Paid",
+              "Balance",
+              "Date"
+            ]
           ],
           body: data,
-          startY: 30,
-          theme: "striped",
+          startY: 60,
+          theme: 'grid',
+          styles: {
+            font: 'helvetica',
+            fontSize: 9,
+            cellPadding: 2,
+            textColor: [50, 50, 50],
+            lineColor: [200, 200, 200],
+            lineWidth: 0.1
+          },
+          headStyles: {
+            fillColor: [255, 102, 0],
+            textColor: [255, 255, 255],
+            fontStyle: 'bold',
+            halign: 'center',
+            fontSize: 9
+          },
+          columnStyles: {
+            0: { cellWidth: 25, overflow: 'linebreak' }, // Name
+            1: { cellWidth: 35, overflow: 'linebreak' }, // Email
+            2: { cellWidth: 25, overflow: 'linebreak' }, // Course
+            3: { cellWidth: 22, halign: 'right', overflow: 'ellipsize' }, // Amount Paid
+            4: { cellWidth: 22, halign: 'right', overflow: 'ellipsize' }, // Total Paid
+            5: { cellWidth: 22, halign: 'right', overflow: 'ellipsize' }, // Balance
+            6: { cellWidth: 20, overflow: 'linebreak' } // Date
+          },
+          margin: { left: 25, right: 25 }, // Center table
+          tableWidth: 160 // Total width
         });
 
-        doc.setFontSize(7);
+        // Summary Section
+        const finalY = doc.autoTable.previous.finalY;
+        doc.setFontSize(10);
+        doc.setTextColor(0);
+
+        // Calculate Total Amount Paid
+        const totalAmountPaid = transactions.reduce((sum, t) => sum + t.amountPaid, 0);
+
+        // Calculate Total Balance Due (sum of final balances per student)
+        const uniqueEmails = [...new Set(transactions.map(t => t.email))];
+        const totalBalance = uniqueEmails.reduce((sum, email) => {
+          const studentTxs = transactions.filter(t => t.email === email);
+          const lastTx = studentTxs[studentTxs.length - 1];
+          const totalPaid = studentTxs.reduce((s, t) => s + t.amountPaid, 0);
+          return sum + (lastTx.courseFee - totalPaid);
+        }, 0);
+
+        doc.text(`Total Amount Paid: Ksh.${totalAmountPaid.toFixed(2)}`, 135, finalY + 10);
+        doc.text(`Total Balance Due: Ksh.${totalBalance.toFixed(2)}`, 135, finalY + 16);
+
+        // Footer
+        doc.setFontSize(8);
+        doc.setTextColor(100);
         doc.text(
           "Thank you for your payment! For queries, contact: info.codespaceinstitute@gmail.com",
           20,
-          doc.autoTable.previous.finalY + 10
+          doc.internal.pageSize.height - 20
+        );
+        doc.text(
+          "© 2025 Codespace Institute of Development",
+          20,
+          doc.internal.pageSize.height - 14
         );
 
-        doc.save("invoice.pdf");
+        // Save PDF
+        doc.save(`Invoice_${invoiceNumber}.pdf`);
       }
     </script>
   </body>
